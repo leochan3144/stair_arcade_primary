@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Stair Game - Primary Math (BODMAS & Fractions)</title>
+  <title>Stair Game - Primary Math</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/TweenMax.min.js"></script>
   <style>
@@ -13,7 +13,7 @@
       overflow: hidden;
       background-color: black;
       font-family: Arial, sans-serif;
-      touch-action: none; /* Prevent scroll */
+      touch-action: none;
     }
 
     canvas {
@@ -161,10 +161,10 @@
       margin-bottom: 15px;
     }
     
-    /* Touch controls - MOVED TO CENTER SIDES */
+    /* Touch controls */
     #touchControls {
       position: fixed;
-      top: 50%; /* Center Vertically */
+      top: 50%; 
       transform: translateY(-50%);
       width: 100%;
       display: flex;
@@ -233,14 +233,13 @@
   <audio id="correct" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg" preload="auto"></audio> 
   
   <script>
-    //環境變數
+    // Global Vars
     var updateFPS = 30
-    var showMouse = true
     var time = 0
     var bgColor ="black"
     var ww, wh; 
 
-    //控制
+    // Controls
     var controls = {
       value: 0
     }
@@ -259,19 +258,20 @@
     }, false);
 
     //------------------------
-    // Helpers for Formatting
+    // Graphics Helpers
     //------------------------
     
-    // Draws text. If string contains "_over_", draws a formal vertical fraction.
+    // 1. Draw Single Expression (Used for Walls)
+    // Supports "1_over_2" syntax for fractions
     const drawFormalExpression = (ctx, text, x, y, fontSize, color = "white", align = "center") => {
         ctx.fillStyle = color;
         
-        if (text.includes("_over_")) {
+        if (text && text.includes("_over_")) {
             const parts = text.split("_over_");
             const num = parts[0];
             const den = parts[1];
             
-            ctx.font = "bold " + (fontSize * 0.85) + "px Arial"; // Slightly smaller for fractions
+            ctx.font = "bold " + (fontSize * 0.85) + "px Arial";
             const numMetrics = ctx.measureText(num);
             const denMetrics = ctx.measureText(den);
             const maxWidth = Math.max(numMetrics.width, denMetrics.width);
@@ -280,17 +280,12 @@
             if (align === "center") startX = x - maxWidth / 2;
             else if (align === "right") startX = x - maxWidth;
 
-            // Draw Numerator
             ctx.textAlign = "center";
             ctx.fillText(num, startX + maxWidth / 2, y - fontSize * 0.4);
             
-            // Draw Line
             ctx.fillRect(startX, y - fontSize * 0.25, maxWidth, Math.max(2, fontSize/15));
             
-            // Draw Denominator
             ctx.fillText(den, startX + maxWidth / 2, y + fontSize * 0.7);
-            
-            // Reset align
             ctx.textAlign = align;
         } else {
             ctx.font = "bold " + fontSize + "px Arial";
@@ -299,65 +294,75 @@
         }
     };
 
+    // 2. Draw Complex Equation (Used for Top Question)
+    // Accepts array of parts: [{type:'text', val:'...'}, {type:'frac', num:'1', den:'2'}]
+    const drawEquation = (ctx, parts, x, y, fontSize, color = "white") => {
+        ctx.fillStyle = color;
+        ctx.textAlign = "left"; // Internal calculation uses left alignment
+        
+        // 1. Calculate Total Width
+        let totalWidth = 0;
+        parts.forEach(part => {
+            if (part.type === 'text') {
+                ctx.font = "bold " + fontSize + "px Arial";
+                totalWidth += ctx.measureText(part.val).width;
+            } else if (part.type === 'frac') {
+                ctx.font = "bold " + (fontSize * 0.85) + "px Arial";
+                let nw = ctx.measureText(part.num).width;
+                let dw = ctx.measureText(part.den).width;
+                part.width = Math.max(nw, dw) + 4; // +4 padding
+                totalWidth += part.width + 8; // +8 spacing
+            }
+        });
+
+        // 2. Draw Center Aligned
+        let currentX = x - totalWidth / 2;
+        
+        parts.forEach(part => {
+            if (part.type === 'text') {
+                ctx.font = "bold " + fontSize + "px Arial";
+                ctx.fillText(part.val, currentX, y);
+                currentX += ctx.measureText(part.val).width;
+            } else if (part.type === 'frac') {
+                ctx.font = "bold " + (fontSize * 0.85) + "px Arial";
+                let mx = currentX + part.width / 2 + 4; 
+                
+                ctx.textAlign = "center";
+                ctx.fillText(part.num, mx, y - fontSize * 0.35);
+                
+                ctx.fillRect(mx - part.width/2 + 2, y - fontSize * 0.25, part.width - 4, Math.max(2, fontSize/15));
+                
+                ctx.fillText(part.den, mx, y + fontSize * 0.75);
+                
+                ctx.textAlign = "left"; 
+                currentX += part.width + 8;
+            }
+        });
+        ctx.textAlign = "center"; // Reset
+    };
+
     //------------------------
-    // Vec2
+    // Vector Class
     class Vec2{
       constructor(x,y){
-        this.x = x
-        this.y = y
+        this.x = x; this.y = y;
       }
       set(x,y){
-        this.x =x
-        this.y =y
-      }
-      move(x,y){
-        this.x+=x
-        this.y+=y
+        this.x =x; this.y =y;
       }
       add(v){
         return new Vec2(this.x+v.x,this.y+v.y)
       }
-      sub(v){
-        return new Vec2(this.x-v.x,this.y-v.y)
-      }
       mul(s){
         return new Vec2(this.x*s,this.y*s)
-      }
-      get length(){
-        return Math.sqrt(this.x*this.x+this.y*this.y)
-      }
-      set length(nv){
-        let temp = this.unit.mul(nv)
-        this.set(temp.x,temp.y)
       }
       clone(){
         return new Vec2(this.x,this.y)
       }
-      toString(){
-        return `(${this.x}, ${this.y})`
-      }
-      equal(v){
-        return this.x==v.x && this.y ==v.y
-      }
-      get angle(){
-        return Math.atan2(this.y,this.x)  
-      }
-      get unit(){
-        return this.mul(1/this.length)
-      }
-      
     }
 
-    //------
     var canvas = document.getElementById("mycanvas")
     var ctx = canvas.getContext("2d")
-    ctx.circle= function(v,r){
-      this.arc(v.x,v.y,r,0,Math.PI*2)
-    }
-    ctx.line= function(v1,v2){
-      this.moveTo(v1.x,v1.y)
-      this.lineTo(v2.x,v2.y)
-    }
 
     function playSound(id){
       var sound = document.getElementById(id);
@@ -378,167 +383,124 @@
       const scores = getLeaderboard();
       const scoresList = document.getElementById('scoresList');
       scoresList.innerHTML = '';
-      
-      scores.slice(0, 10).forEach((entry, index) => {
+      scores.slice(0, 10).forEach((entry) => {
         const li = document.createElement('li');
         li.textContent = `${entry.name}: ${entry.score}/F`;
-        if (entry.isCurrent) {
-          li.classList.add('current-score');
-        }
+        if (entry.isCurrent) li.classList.add('current-score');
         scoresList.appendChild(li);
       });
     }
 
     function checkNewRecord(score) {
       const scores = getLeaderboard();
-      
       if (scores.length >= 10 && score <= scores[9].score) {
         document.getElementById('leaderboard').style.display = 'block';
         updateLeaderboardDisplay();
         return;
       }
-
       document.getElementById('currentScoreDisplay').textContent = score;
       document.getElementById('nameModal').style.display = 'flex';
       setTimeout(()=> document.getElementById('nameInput').focus(), 100);
     }
 
     function submitName() {
-      const name = document.getElementById('nameInput').value.trim() || 'Unknown Hero';
+      const name = document.getElementById('nameInput').value.trim() || 'Unknown';
       const score = parseInt(document.getElementById('currentScoreDisplay').textContent);
-      
       const scores = getLeaderboard();
-      const newEntry = { score: score, name: name, isCurrent: true };
-      
       scores.forEach(s => s.isCurrent = false);
-      
-      scores.push(newEntry);
+      scores.push({ score: score, name: name, isCurrent: true });
       scores.sort((a, b) => b.score - a.score); 
-      
-      const top10 = scores.slice(0, 10);
-      
-      saveLeaderboard(top10);
-      
+      saveLeaderboard(scores.slice(0, 10));
       document.getElementById('nameModal').style.display = 'none';
       document.getElementById('leaderboard').style.display = 'block';
       updateLeaderboardDisplay();
     }
 
-    //遊戲物件
+    //------------------------
+    // GAME CLASS
+    //------------------------
     class Game{
       constructor(){
         this.player = null
         this.walls = []
         this.width = Math.min(window.innerWidth, 700) 
         this.height = wh
-        this.walltypes = [
-          "normal","jump","slideLeft","slideRight",
-          "hurt","fade"
-        ]
+        this.walltypes = ["normal","jump","slideLeft","slideRight","hurt","fade"]
         this.hurt=0
         this.playing=false
-        this.keystatus = {
-          left: false,
-          right: false,
-          up: false,
-          down: false,
-        }
+        this.keystatus = { left: false, right: false }
         this.time=0
         
-        this.mathQuestion = "";
+        // Question Data
+        this.questionParts = []; // Array for render
         this.correctAnswer = "";
         this.wrongAnswer = "";
       }
       
-      // Helper to calculate Greatest Common Divisor
       gcd(a, b) {
         return b == 0 ? a : this.gcd(b, a % b);
       }
 
-      // Helper to format answer for display (creates vertical fraction if needed)
       formatFraction(num, den) {
         if (den === 0) return "Error";
-        
         let common = this.gcd(Math.abs(num), Math.abs(den));
         num /= common;
         den /= common;
-        
         if (den === 1) return num.toString();
         return `${num}_over_${den}`;
       }
 
       generateMathProblem() {
-        // Types:
-        // 1. Mixed Ops (BODMAS): A + B x C
-        // 2. Mixed Ops (Brackets): (A + B) x C
-        // 3. Fractions (Same Denom): a/b + c/b
-        // 4. Fractions (Mult Integer): n x a/b
-        
         const typeRoll = Math.random();
-        
-        // --- Type 1 & 2: Mixed Operations (Integers) ---
-        if (typeRoll < 0.5) {
+        this.questionParts = [];
+
+        // Type 1: Mixed Operations (Integers)
+        if (typeRoll < 0.4) {
             let n1 = Math.floor(Math.random() * 9) + 2;
             let n2 = Math.floor(Math.random() * 9) + 2;
             let n3 = Math.floor(Math.random() * 5) + 2;
             
-            // 50% chance for brackets vs order of ops
             if (Math.random() < 0.5) {
-                // Order of operations test: 2 + 3 x 4
-                this.mathQuestion = `${n1} + ${n2} × ${n3} = ?`;
-                let ans = n1 + (n2 * n3);
-                this.correctAnswer = ans.toString();
-                
-                // Common mistake: (2+3) x 4
+                // 2 + 3 x 4
+                this.questionParts.push({type:'text', val: `${n1} + ${n2} × ${n3} = ?`});
+                this.correctAnswer = (n1 + (n2 * n3)).toString();
                 this.wrongAnswer = ((n1 + n2) * n3).toString();
             } else {
-                // Brackets test: (2 + 3) x 4
-                this.mathQuestion = `(${n1} + ${n2}) × ${n3} = ?`;
-                let ans = (n1 + n2) * n3;
-                this.correctAnswer = ans.toString();
-                
-                // Common mistake: 2 + 3 x 4
+                // (2 + 3) x 4
+                this.questionParts.push({type:'text', val: `(${n1} + ${n2}) × ${n3} = ?`});
+                this.correctAnswer = ((n1 + n2) * n3).toString();
                 this.wrongAnswer = (n1 + (n2 * n3)).toString();
             }
         } 
-        // --- Type 3: Fractions (Add/Sub) ---
-        else if (typeRoll < 0.8) {
-            let den = Math.floor(Math.random() * 8) + 2; // 2 to 9
+        // Type 2: Fraction Addition
+        else if (typeRoll < 0.7) {
+            let den = Math.floor(Math.random() * 8) + 2; 
             let n1 = Math.floor(Math.random() * (den - 1)) + 1; 
             let n2 = Math.floor(Math.random() * (den - 1)) + 1;
             
-            // Make string like "1/5 + 2/5"
-            this.mathQuestion = `${n1}/${den} + ${n2}/${den} = ?`;
+            // Render: n1/den + n2/den = ?
+            this.questionParts.push({type:'frac', num:n1.toString(), den:den.toString()});
+            this.questionParts.push({type:'text', val: " + "});
+            this.questionParts.push({type:'frac', num:n2.toString(), den:den.toString()});
+            this.questionParts.push({type:'text', val: " = ?"});
             
-            // Correct Answer
             this.correctAnswer = this.formatFraction(n1 + n2, den);
-            
-            // Wrong Answer: Adding Denominators (Classic mistake)
-            // e.g. 1/5 + 2/5 = 3/10
             this.wrongAnswer = this.formatFraction(n1 + n2, den * 2); 
-            
-            // Fallback if wrong == correct (e.g. if they simplify to same)
-            if (this.wrongAnswer === this.correctAnswer) {
-                 this.wrongAnswer = this.formatFraction(n1 + n2 + 1, den);
-            }
+            if (this.wrongAnswer === this.correctAnswer) this.wrongAnswer = this.formatFraction(n1 + n2 + 1, den);
         }
-        // --- Type 4: Fractions (Mult by Integer) ---
+        // Type 3: Integer * Fraction
         else {
-            let den = Math.floor(Math.random() * 5) + 3; // 3 to 7
-            let num = 1;
+            let den = Math.floor(Math.random() * 5) + 3; 
             let mult = Math.floor(Math.random() * 4) + 2;
             
-            // Question: 3 x 1/5
-            this.mathQuestion = `${mult} × 1/${den} = ?`;
+            // Render: mult x 1/den = ?
+            this.questionParts.push({type:'text', val: `${mult} × `});
+            this.questionParts.push({type:'frac', num:"1", den:den.toString()});
+            this.questionParts.push({type:'text', val: " = ?"});
             
             this.correctAnswer = this.formatFraction(mult, den);
-            
-            // Wrong: 1/(den * mult) or just incorrect num
             this.wrongAnswer = this.formatFraction(1, den * mult);
-            
-            if (this.wrongAnswer === this.correctAnswer || Math.random() > 0.5) {
-                 this.wrongAnswer = this.formatFraction(mult + 1, den);
-            }
+            if (this.wrongAnswer === this.correctAnswer) this.wrongAnswer = this.formatFraction(mult + 1, den);
         }
       }
 
@@ -556,13 +518,11 @@
             type: "normal" 
           })) 
         }
-        this.player = new Player({
-          p: new Vec2(this.width/2, 200)
-        })    
+        this.player = new Player({ p: new Vec2(this.width/2, 200) })    
       }
       
       start(){
-        document.getElementById('musicBg').play().catch(e=>console.log("Audio play failed"));
+        document.getElementById('musicBg').play().catch(e=>{});
         document.getElementById('startBtn').style.display = 'none';
         document.getElementById('leaderboard').style.display = 'none';
         this.init()
@@ -579,20 +539,14 @@
         document.getElementById('startBtn').style.display = 'none'; 
         playSound('dead');  
         this.playing=false
-        
-        const finalScore = parseInt(this.time/100);
-        checkNewRecord(finalScore);
+        checkNewRecord(parseInt(this.time/100));
       }
       
       update(){
         this.time++
         this.player.update()
-        if (this.keystatus.left){
-          this.player.p.x-=8
-        }
-        if (this.keystatus.right){
-          this.player.p.x+=8
-        }
+        if (this.keystatus.left) this.player.p.x-=8;
+        if (this.keystatus.right) this.player.p.x+=8;
         
         if (time%20==0){
           let newType = this.walltypes[parseInt(Math.random()*this.walltypes.length)];
@@ -607,23 +561,18 @@
           
           if (newType === "normal" || newType === "jump") {
             const roll = Math.random();
-            if (roll < 0.4) {
-                newWall.label = this.correctAnswer;
-            } else if (roll < 0.8) {
-                newWall.label = this.wrongAnswer;
-            }
+            if (roll < 0.4) newWall.label = this.correctAnswer;
+            else if (roll < 0.8) newWall.label = this.wrongAnswer;
           }
-          
           this.walls.push(newWall);
         }
         
         let touching = false
         this.walls.forEach(wall=>{  
           wall.update() 
-          if (wall.p.x-wall.width/2<this.player.p.x+this.player.width/2
-              &&   wall.p.x+wall.width/2>this.player.p.x-this.player.width/2){
-            if (this.player.p.y>wall.p.y 
-                && this.player.p.y<wall.p.y+wall.height+10){ 
+          if (wall.p.x-wall.width/2<this.player.p.x+this.player.width/2 && 
+              wall.p.x+wall.width/2>this.player.p.x-this.player.width/2){
+            if (this.player.p.y>wall.p.y && this.player.p.y<wall.p.y+wall.height+10){ 
               touching=true
               wall.step(this.player)
               this.player.lastBlock=wall
@@ -635,7 +584,6 @@
           this.player.lastBlock=null
           document.getElementById("transmiting").pause()
         }
-
         this.walls = this.walls.filter(wall=>wall.active)
         
         if (this.player.p.y-this.player.height<0){
@@ -648,238 +596,162 @@
           }
         }
         
-        if (this.player.p.x-this.player.width/2<0){
-          this.player.p.x=this.player.width/2
-        }
-        if (this.player.p.x+this.player.width/2>this.width){
-          this.player.p.x=this.width-this.player.width/2
-        }
-        
-        if (this.player.p.y>wh+this.player.height){
-          game.end()
-        }
+        if (this.player.p.x-this.player.width/2<0) this.player.p.x=this.player.width/2;
+        if (this.player.p.x+this.player.width/2>this.width) this.player.p.x=this.width-this.player.width/2;
+        if (this.player.p.y>wh+this.player.height) game.end();
       }
       
       draw(){
         ctx.save()
           ctx.translate(ww/2-this.width/2,0)
+          // Background Lines
           let span = this.width/60
           ctx.beginPath()
-          for(var i=0;i<=this.width/span;i++){
-            ctx.lineTo(i*span,(i%2)*30)
-          }  
-          ctx.fillStyle="white"
-          ctx.fill()
+          for(var i=0;i<=this.width/span;i++){ ctx.lineTo(i*span,(i%2)*30) }  
+          ctx.fillStyle="white"; ctx.fill();
         
+          // Walls and Player
           ctx.beginPath()
-          ctx.moveTo(0,0)
-          ctx.lineTo(0,wh)
-          ctx.moveTo(this.width,0)
-          ctx.lineTo(this.width,wh)
-          ctx.strokeStyle="rgba(255,255,255,0.3)"
-          ctx.stroke()
+          ctx.moveTo(0,0); ctx.lineTo(0,wh);
+          ctx.moveTo(this.width,0); ctx.lineTo(this.width,wh);
+          ctx.strokeStyle="rgba(255,255,255,0.3)"; ctx.stroke();
         
           this.player.draw()
           this.walls.forEach(wall=>wall.draw())
         ctx.restore()
         
-        ctx.fillStyle="rgba(255,0,0,"+this.hurt+")"
-        ctx.fillRect(0,0,ww,wh)
+        // Red Flash
+        if(this.hurt > 0) {
+            ctx.fillStyle="rgba(255,0,0,"+this.hurt+")"
+            ctx.fillRect(0,0,ww,wh)
+        }
         
         this.player.drawBlood()
         
+        // UI
         ctx.textAlign = "center"; 
         ctx.fillStyle='white';
-        
         let fontSize = Math.min(ww / 14, 30); 
         let uiCenterX = ww / 2;
         
         ctx.font = fontSize + "px Arial";
         ctx.fillText("Basement：" + (parseInt(this.time/100)) + "/F", uiCenterX, 80);
         
-        ctx.fillStyle='#ffdd38';
-        // Draw the question
-        drawFormalExpression(ctx, "Calculate: " + this.mathQuestion, uiCenterX, 130, fontSize * 1.2, '#ffdd38', 'center');
+        // Render the formal question
+        drawEquation(ctx, this.questionParts, uiCenterX, 130, fontSize * 1.2, '#ffdd38');
         
         ctx.textAlign = "start"; 
       }
     }
 
-    //玩家物件
+    //------------------------
+    // PLAYER CLASS
+    //------------------------
     class Player{
       constructor(args){
         let def = {
-          p: new Vec2(0,0),
-          v: new Vec2(0,0),
-          a: new Vec2(0,1), 
-          width: 40,
-          height: 55,
-          blood: 10,
-          maxBlood: 10,
-          lastBlock: null,
+          p: new Vec2(0,0), v: new Vec2(0,0), a: new Vec2(0,1), 
+          width: 40, height: 55, blood: 10, maxBlood: 10, lastBlock: null
         }
-        Object.assign(def,args)
-        Object.assign(this,def)
+        Object.assign(def,args); Object.assign(this,def);
       }
       update(){
-        this.p=this.p.add(this.v)
-        this.v=this.v.add(this.a)
-        
+        this.p=this.p.add(this.v); this.v=this.v.add(this.a);
       }
       draw(){
-        ctx.beginPath()
         ctx.save()
           ctx.translate(this.p.x,this.p.y)
           ctx.fillStyle="#0047ba"
           ctx.fillRect(-this.width/2,-this.height,this.width,this.height)
           ctx.fillStyle="#ffdd38"
-
           ctx.fillRect(-5,-30,10,10)
-
-          ctx.beginPath()
-          ctx.arc(-6,-40,5,0,Math.PI*2)
-          ctx.arc(+6,-40,5,0,Math.PI*2)
-          ctx.fillStyle="white"
-          ctx.fill()
-
-          ctx.beginPath()
-          ctx.arc(-6,-40,3,0,Math.PI*2)
-          ctx.arc(+6,-40,3,0,Math.PI*2)
-          ctx.fillStyle="black"   
-          ctx.fill()
-        
-        ctx.save()
-            ctx.translate(+this.width/2,-40)
-            ctx.rotate(-Math.log(this.v.y/2))
-            ctx.fillStyle="#416ee0"
-            ctx.fillRect(0,0,8,this.height/2 )
-
-          ctx.restore()
-
-          ctx.save()
-            ctx.translate(-this.width/2,-40)
-            ctx.rotate(Math.log(this.v.y/2))
-            ctx.fillStyle="#416ee0"
-            ctx.fillRect(-8,0,8,this.height/2 )
-
-          ctx.restore()
-
+          // Eyes
+          ctx.beginPath(); ctx.arc(-6,-40,5,0,Math.PI*2); ctx.arc(+6,-40,5,0,Math.PI*2);
+          ctx.fillStyle="white"; ctx.fill();
+          ctx.beginPath(); ctx.arc(-6,-40,3,0,Math.PI*2); ctx.arc(+6,-40,3,0,Math.PI*2);
+          ctx.fillStyle="black"; ctx.fill();
+          // Legs animation
+          ctx.save(); ctx.translate(+this.width/2,-40); ctx.rotate(-Math.log(Math.abs(this.v.y/2)+1));
+          ctx.fillStyle="#416ee0"; ctx.fillRect(0,0,8,this.height/2); ctx.restore();
+          ctx.save(); ctx.translate(-this.width/2,-40); ctx.rotate(Math.log(Math.abs(this.v.y/2)+1));
+          ctx.fillStyle="#416ee0"; ctx.fillRect(-8,0,8,this.height/2); ctx.restore();
         ctx.restore()
       }
       drawBlood(){
-        let barWidth = 10;
-        let gap = 4;
+        let barWidth = 10; let gap = 4;
         let totalWidth = 10 * barWidth + 9 * gap;
         let startX = (ww - totalWidth) / 2;
-        
         for(var i=0;i<10;i++){
           ctx.fillStyle=i<this.blood?"red":"rgba(255,255,255,0.2)"
           ctx.fillRect(startX + i*(barWidth+gap), 40, barWidth, 20)
         }
       }
       bloodDelta(delta){
-        if (delta<0){
-          playSound('hurt')
-        }
-        this.blood+=delta
-        if (this.blood>this.maxBlood){
-          this.blood=this.maxBlood
-        }
-        if (this.blood<=0){
-          this.blood=0
-          game.end()
-        }
+        if (delta<0) playSound('hurt');
+        this.blood+=delta;
+        if (this.blood>this.maxBlood) this.blood=this.maxBlood;
+        if (this.blood<=0){ this.blood=0; game.end(); }
       }
     }
 
-    //-----------------
-    //      牆壁物件
-    //-----------------
+    //------------------------
+    // WALL CLASS
+    //------------------------
     class Wall{
       constructor(args){
         let def = {
-          p: new Vec2(0,0),
-          v: new Vec2(0,-4),
-          a: new Vec2(0,0),
-          width: 150,
-          height: 20, 
-          extraHeight: 0,
-          type: "normal",
-          active: true,
-          label: null 
+          p: new Vec2(0,0), v: new Vec2(0,-4), a: new Vec2(0,0),
+          width: 150, height: 20, extraHeight: 0, type: "normal", active: true, label: null 
         }
-        Object.assign(def,args)
-        Object.assign(this,def)
+        Object.assign(def,args); Object.assign(this,def);
       }
       update(){
-        this.p=this.p.add(this.v)
-        this.v=this.v.add(this.a)
-        if (this.p.y<-20){
-          this.active=false
-        }
+        this.p=this.p.add(this.v); this.v=this.v.add(this.a);
+        if (this.p.y<-20) this.active=false;
       }
-      
       draw(){
         ctx.save()
         ctx.translate(this.p.x-this.width/2,this.p.y-this.extraHeight)
-          ctx.fillStyle="white"
           
+          // Draw Base Wall
           if (this.type=="normal" || this.type=="hurt"){
-            ctx.fillStyle="#888" 
-            ctx.fillRect(0,0,this.width,this.height/2)
+            ctx.fillStyle="#888"; ctx.fillRect(0,0,this.width,this.height/2);
           }
-        
           if (this.type=="hurt"){
-            ctx.beginPath()
-            let span = this.width/16
-            for(var i=0;i<=this.width/span;i+=1){ 
-              ctx.lineTo(0+i*span,-(i%2)*15)
-            }
-            ctx.fillStyle="#ddd" 
-            ctx.fill()
+            ctx.beginPath();
+            let span = this.width/16;
+            for(var i=0;i<=this.width/span;i+=1){ ctx.lineTo(0+i*span,-(i%2)*15); }
+            ctx.fillStyle="#ddd"; ctx.fill();
           }
-        
           if (this.type=="jump"){
-            ctx.fillStyle="#53d337"
-            ctx.fillRect(0,0,this.width,5)
-            ctx.fillRect(0,this.height+this.extraHeight,this.width,5)
+            ctx.fillStyle="#53d337"; ctx.fillRect(0,0,this.width,5);
+            ctx.fillRect(0,this.height+this.extraHeight,this.width,5);
           }
           if (this.type=="fade"){
-            ctx.fillStyle="#ffd428"
-            ctx.fillRect(0,0,this.width,this.height)
+            ctx.fillStyle="#ffd428"; ctx.fillRect(0,0,this.width,this.height);
           }
           if (this.type=="slideLeft" || this.type=="slideRight"){
             for(var i=-1;i<this.width/20;i+=1){ 
-              let x = 0+i*20+(time%20)* (this.type=="slideLeft"?-1:1)
-              let width = 10
-              if (x<0){
-                x=0
-              } 
-              if (x+width>this.width){
-                width = this.width-x<0?0:(this.width-x)
-              }
-              ctx.fillStyle="red"
-              ctx.save()
-              ctx.transform(1, 0,0.5, 1, 0, 0)
-              ctx.fillRect(x ,0,width,this.height)
-              ctx.restore()
+              let x = 0+i*20+(time%20)* (this.type=="slideLeft"?-1:1);
+              let w = 10; if(x<0) x=0; if(x+w>this.width) w = Math.max(0, this.width-x);
+              ctx.fillStyle="red";
+              ctx.save(); ctx.transform(1, 0,0.5, 1, 0, 0); ctx.fillRect(x ,0,w,this.height); ctx.restore();
             }
           }
           
+          // Draw Answer Label
           if (this.label !== null) {
-              ctx.shadowColor="black";
-              ctx.shadowBlur=4;
-              // Use the helper function to draw formal fractions or powers
+              ctx.shadowColor="black"; ctx.shadowBlur=4;
               drawFormalExpression(ctx, this.label, this.width/2, -8, 24, "white", "center");
               ctx.shadowBlur=0;
           }
-          
         ctx.restore()
       } 
       step(player){
         player.v.y=0
         if (player.lastBlock!=this){
           
+          // Math Logic Check
           if (this.label !== null) {
               if (this.label === game.correctAnswer) {
                   playSound('correct'); 
@@ -887,55 +759,40 @@
                   game.generateMathProblem();
               } else {
                   player.bloodDelta(-1);
+                  // TRIGGER RED FLASH
+                  game.hurt = 1; 
+                  TweenMax.to(game, 0.2, {hurt: 0});
               }
-              this.label = null; // Remove label after hitting
+              this.label = null; 
           }
 
-          if (this.type=="normal"){
-            playSound('step')
-          }
-          if (this.type=="fade"){
-            playSound('fade')
-          }
-          if (this.type=="hurt"){
-            playSound('hurt')
-          }
-          if (this.type=="jump"){
-            playSound('jump')
-          }
+          // Sound
+          if (this.type=="normal") playSound('step');
+          if (this.type=="fade") playSound('fade');
+          if (this.type=="hurt") playSound('hurt');
+          if (this.type=="jump") playSound('jump');
         }
-        if (this.type=="normal"){
-          player.p.y = this.p.y
-        }
+        
+        // Physics
+        if (this.type=="normal") player.p.y = this.p.y;
         if (this.type=="hurt"){
-          player.p.y = this.p.y
-          
+          player.p.y = this.p.y;
           if (player.lastBlock!=this){
-            player.bloodDelta(-2) 
-            game.hurt=1
-            TweenMax.to( game,0.2,{hurt: 0} )
+            player.bloodDelta(-2); 
+            game.hurt=1; TweenMax.to(game,0.2,{hurt: 0});
           }
         }
         if (this.type=="jump"){
-          player.v.y = -15
-          this.extraHeight=10
-          TweenMax.to(this,0.2,{extraHeight: 0})
+          player.v.y = -15; this.extraHeight=10; TweenMax.to(this,0.2,{extraHeight: 0});
         } 
         if (this.type=="slideLeft"){ 
-          player.p.x-=3
-          player.p.y = this.p.y
-             document.getElementById("transmiting").play()
+          player.p.x-=3; player.p.y = this.p.y; document.getElementById("transmiting").play();
         }
         if (this.type=="slideRight"){
-          player.p.x+=3
-          player.p.y = this.p.y
-             document.getElementById("transmiting").play()
+          player.p.x+=3; player.p.y = this.p.y; document.getElementById("transmiting").play();
         }
-        if (this.type=="fade"){
-          player.p.y-=3
-        }
+        if (this.type=="fade") player.p.y-=3;
       }
-      
     }
 
     function initCanvas(){
@@ -949,89 +806,41 @@
     
     var game = new Game
     initCanvas()
-
-    function init(){
-      game.init()
-    }
-    function update(){
-      time++
-      if (game.playing){
-        game.update()
-      }
-    }
-    function draw(){
-      ctx.fillStyle=bgColor
-      ctx.fillRect(0,0,ww,wh)
-      game.draw()
-      requestAnimationFrame(draw)
-    }
-    function loaded(){
-      initCanvas()
-      init()
-      requestAnimationFrame(draw)
-      setInterval(update,1000/updateFPS)
-    }
+    function init(){ game.init() }
+    function update(){ time++; if(game.playing) game.update(); }
+    function draw(){ ctx.fillStyle=bgColor; ctx.fillRect(0,0,ww,wh); game.draw(); requestAnimationFrame(draw); }
+    function loaded(){ initCanvas(); init(); requestAnimationFrame(draw); setInterval(update,1000/updateFPS); }
+    
     window.addEventListener("load",loaded)
     window.addEventListener("resize",initCanvas)
 
-    //滑鼠事件跟紀錄
-    var mousePos = new Vec2(0,0)
-    var mousePosDown = new Vec2(0,0)
-    var mousePosUp = new Vec2(0,0)
-
-    window.addEventListener("mousemove",mousemove)
-    window.addEventListener("mouseup",mouseup)
-    window.addEventListener("mousedown",mousedown)
-    function mousemove(evt){
-      mousePos.set(evt.clientX,evt.clientY)
-    }
-    function mouseup(evt){
-      mousePos.set(evt.clientX,evt.clientY)
-      mousePosUp = mousePos.clone()
-      
-    }
-    function mousedown(evt){
-      mousePos.set(evt.clientX,evt.clientY)
-      mousePosDown = mousePos.clone()
-    }
-
+    // Keys
     window.addEventListener('keydown',function(evt){
       let key = evt.key.replace("Arrow","").toLowerCase()
       game.keystatus[key]=true
     })
-
     window.addEventListener('keyup',function(evt){
       let key = evt.key.replace("Arrow","").toLowerCase()
       game.keystatus[key]=false
     })
 
-    // Touch controls
+    // Touch
     const leftBtn = document.getElementById('leftBtn');
     const rightBtn = document.getElementById('rightBtn');
-    
-    const handleTouchStart = (direction) => (e) => {
+    const handleTouch = (dir, active) => (e) => {
         e.preventDefault(); 
-        game.keystatus[direction] = true;
-        e.target.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
+        game.keystatus[dir] = active;
+        e.target.style.backgroundColor = active ? "rgba(255, 255, 255, 0.4)" : "rgba(255, 255, 255, 0.1)";
     };
+    leftBtn.addEventListener('touchstart', handleTouch('left', true), {passive: false});
+    leftBtn.addEventListener('touchend', handleTouch('left', false), {passive: false});
+    rightBtn.addEventListener('touchstart', handleTouch('right', true), {passive: false});
+    rightBtn.addEventListener('touchend', handleTouch('right', false), {passive: false});
 
-    const handleTouchEnd = (direction) => (e) => {
-        e.preventDefault();
-        game.keystatus[direction] = false;
-        e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-    };
-    
-    leftBtn.addEventListener('touchstart', handleTouchStart('left'), {passive: false});
-    leftBtn.addEventListener('touchend', handleTouchEnd('left'), {passive: false});
-    
-    rightBtn.addEventListener('touchstart', handleTouchStart('right'), {passive: false});
-    rightBtn.addEventListener('touchend', handleTouchEnd('right'), {passive: false});
-
+    // Name Input
     document.getElementById('submitName').addEventListener('click', submitName);
     document.getElementById('nameInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        submitName();
-      }
+      if (e.key === 'Enter') submitName();
     });
   </script>
 </body>
